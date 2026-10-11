@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Level — Price Touch Alerts</title>
+<style>
+  :root{
+    --bg:#0B0E14;
+    --panel:#12161F;
+    --panel-2:#191F2C;
+    --line:#232A38;
+    --text:#E7EAF0;
+    --dim:#7C8698;
+    --amber:#E3A24B;
+    --up:#3FBF7F;
+    --down:#E5605A;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    height:100%;overscroll-behavior-y:contain;}
+  #app{display:flex;flex-direction:column;height:100vh;max-width:520px;margin:0 auto;}
+
+  header{display:flex;align-items:center;justify-content:space-between;
+    padding:16px 16px 10px;flex-shrink:0;}
+  header h1{font-size:19px;margin:0;font-weight:600;letter-spacing:-0.01em;}
+  header h1 span{color:var(--amber);}
+  #gearBtn{background:none;border:none;color:var(--dim);font-size:20px;padding:6px;cursor:pointer;}
+
+  #tapModeRow{display:flex;gap:6px;padding:0 16px 10px;flex-shrink:0;align-items:center;}
+  .modeBtn{flex:1;padding:8px 0;border-radius:9px;border:1px solid var(--line);
+    background:var(--panel);color:var(--dim);font-size:12.5px;font-weight:600;cursor:pointer;}
+  .modeBtn.active{background:var(--amber);color:#1A1200;border-color:var(--amber);}
+  #clearSwingBtn{flex-shrink:0;display:none;padding:8px 10px;border-radius:9px;border:1px solid var(--line);
+    background:var(--panel);color:var(--dim);font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;}
+  #clearSwingBtn.show{display:block;}
+
+  #assetBar{display:flex;gap:6px;padding:0 16px 12px;flex-shrink:0;}
+  .classBtn{flex:1;padding:9px 0;border-radius:9px;border:1px solid var(--line);
+    background:var(--panel);color:var(--dim);font-size:12.5px;font-weight:600;cursor:pointer;}
+  .classBtn.active{background:var(--amber);color:#1A1200;border-color:var(--amber);}
+
+  #symbolRow{display:flex;gap:8px;padding:0 16px 8px;flex-shrink:0;}
+  #symbolInput{flex:1;background:var(--panel);border:1px solid var(--line);border-radius:9px;
+    padding:11px 12px;color:var(--text);font-size:15px;font-family:inherit;}
+  #symbolInput::placeholder{color:var(--dim);}
+  #loadBtn{background:var(--panel-2);border:1px solid var(--line);color:var(--text);
+    border-radius:9px;padding:0 16px;font-size:14px;font-weight:600;cursor:pointer;}
+
+  #timeframeRow{display:flex;gap:6px;padding:0 16px 10px;flex-shrink:0;overflow-x:auto;}
+  .tfBtn{flex:0 0 auto;padding:7px 12px;border-radius:8px;border:1px solid var(--line);
+    background:var(--panel);color:var(--dim);font-size:12.5px;font-weight:600;cursor:pointer;
+    white-space:nowrap;}
+  .tfBtn.active{background:var(--panel-2);color:var(--amber);border-color:var(--amber);}
+
+  #pairGrid{display:flex;flex-wrap:wrap;gap:6px;padding:0 16px 14px;
+    max-height:104px;overflow-y:auto;flex-shrink:0;}
+  .pairChip{padding:6px 10px;border-radius:7px;border:1px solid var(--line);
+    background:var(--panel);color:var(--text);font-size:12px;font-weight:600;cursor:pointer;
+    white-space:nowrap;}
+  .pairChip.active{background:var(--amber);color:#1A1200;border-color:var(--amber);}
+
+  #chartWrap{position:relative;flex:1;min-height:280px;margin:0 16px 14px;
+    background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden;}
+  #chart{width:100%;height:100%;}
+  #chartHint{position:absolute;top:10px;left:12px;font-size:12px;color:var(--dim);
+    pointer-events:none;}
+  #priceNow{position:absolute;top:10px;right:12px;font-size:13px;font-variant-numeric:tabular-nums;
+    color:var(--text);font-weight:600;pointer-events:none;}
+  #chartEmpty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    color:var(--dim);font-size:13px;text-align:center;padding:0 30px;}
+
+  #lineHandles{position:absolute;inset:0;pointer-events:none;}
+  .lineHandle{position:absolute;right:6px;width:30px;height:24px;margin-top:-12px;
+    background:var(--amber);border-radius:7px;display:flex;align-items:center;justify-content:center;
+    font-size:13px;color:#1A1200;pointer-events:auto;cursor:ns-resize;touch-action:none;
+    box-shadow:0 2px 6px rgba(0,0,0,0.4);z-index:5;}
+
+  #pendingPanel{flex-shrink:0;padding:0 16px;display:none;}
+  #pendingPanel.show{display:block;padding-bottom:12px;}
+  .pendingRow{display:flex;align-items:center;justify-content:space-between;gap:8px;
+    background:var(--panel-2);border:1px solid var(--amber);border-radius:9px;
+    padding:9px 10px;margin-bottom:7px;}
+  .pendingPrice{font-size:14px;font-weight:700;font-variant-numeric:tabular-nums;flex-shrink:0;}
+  .pendingBtns{display:flex;gap:6px;}
+  .pendingBtns button{padding:7px 9px;border-radius:7px;border:1px solid var(--line);
+    background:var(--panel);color:var(--text);font-size:11.5px;font-weight:600;cursor:pointer;
+    white-space:nowrap;}
+  .pendingBtns button.primary{background:var(--amber);color:#1A1200;border-color:var(--amber);}
+  .pendingBtns button.remove{color:var(--dim);padding:7px 10px;}
+
+  #alertsSection{flex-shrink:0;padding:0 16px 16px;max-height:34vh;overflow-y:auto;}
+  #alertsSection h2{font-size:12px;color:var(--dim);font-weight:600;margin:4px 0 8px;
+    text-transform:none;}
+  .alertRow{display:flex;align-items:center;justify-content:space-between;gap:10px;
+    background:var(--panel);border:1px solid var(--line);border-radius:9px;
+    padding:10px 12px;margin-bottom:7px;}
+  .alertRow .sym{font-weight:600;font-size:14px;}
+  .alertRow .lvl{color:var(--amber);font-variant-numeric:tabular-nums;font-size:13px;margin-left:8px;}
+  .alertRow .dir{color:var(--dim);font-size:11px;margin-left:6px;}
+  .alertRow .time{color:var(--dim);font-size:10px;margin-top:2px;}
+  .alertRow .status{font-size:11px;padding:2px 7px;border-radius:5px;}
+  .status.active{background:rgba(227,162,75,0.15);color:var(--amber);}
+  .status.fired{background:rgba(63,191,127,0.15);color:var(--up);}
+  .alertRow button{background:none;border:none;color:var(--dim);font-size:16px;cursor:pointer;
+    padding:2px 4px;}
+  #alertsEmpty{color:var(--dim);font-size:13px;padding:8px 0;}
+
+  /* Settings modal */
+  #overlay{position:fixed;inset:0;background:rgba(0,0,0,0.6);display:none;
+    align-items:flex-end;z-index:50;}
+  #overlay.show{display:flex;}
+  #settingsSheet{background:var(--panel);border-radius:16px 16px 0 0;width:100%;
+    max-width:520px;margin:0 auto;padding:18px 18px 28px;max-height:85vh;overflow-y:auto;}
+  #settingsSheet h2{font-size:16px;margin:0 0 4px;}
+  #settingsSheet p.sub{color:var(--dim);font-size:12.5px;margin:0 0 16px;line-height:1.5;}
+  .field{margin-bottom:14px;}
+  .field label{display:block;font-size:12px;color:var(--dim);margin-bottom:5px;font-weight:600;}
+  .field input{width:100%;background:var(--panel-2);border:1px solid var(--line);
+    border-radius:8px;padding:10px 11px;color:var(--text);font-size:14px;font-family:inherit;}
+  .field .help{font-size:11.5px;color:var(--dim);margin-top:5px;line-height:1.5;}
+  .field .help a{color:var(--amber);}
+  #chatIdRow{display:flex;gap:8px;}
+  #chatIdRow input{flex:1;}
+  #fetchChatIdBtn{background:var(--panel-2);border:1px solid var(--line);color:var(--text);
+    border-radius:8px;padding:0 12px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;}
+  #chatIdStatus{font-size:11.5px;margin-top:5px;}
+  #saveSettingsBtn{width:100%;padding:12px 0;border-radius:9px;border:none;background:var(--amber);
+    color:#1A1200;font-size:14px;font-weight:700;cursor:pointer;margin-top:6px;}
+  #closeSettingsBtn{position:absolute;top:16px;right:18px;background:none;border:none;
+    color:var(--dim);font-size:20px;cursor:pointer;}
+  #settingsSheet{position:relative;}
+
+  /* Edit price modal */
+  #editPriceOverlay{position:fixed;inset:0;background:rgba(0,0,0,0.6);display:none;
+    align-items:flex-end;z-index:60;}
+  #editPriceOverlay.show{display:flex;}
+  #editPriceSheet{background:var(--panel);border-radius:16px 16px 0 0;width:100%;
+    max-width:520px;margin:0 auto;padding:18px 18px 28px;position:relative;}
+  #editPriceSheet h2{font-size:16px;margin:0 0 14px;}
+  #editPriceInput{width:100%;background:var(--panel-2);border:1px solid var(--line);
+    border-radius:8px;padding:12px 11px;color:var(--text);font-size:18px;
+    font-variant-numeric:tabular-nums;font-family:inherit;}
+  #saveEditPriceBtn{width:100%;padding:12px 0;border-radius:9px;border:none;background:var(--amber);
+    color:#1A1200;font-size:14px;font-weight:700;cursor:pointer;margin-top:14px;}
+  #closeEditPriceBtn{position:absolute;top:16px;right:18px;background:none;border:none;
+    color:var(--dim);font-size:20px;cursor:pointer;}
+  #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
+    background:var(--panel-2);border:1px solid var(--line);color:var(--text);
+    padding:10px 16px;border-radius:9px;font-size:13px;z-index:100;display:none;}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <header>
+    <h1>Level<span>.</span></h1>
+    <button id="gearBtn" title="Settings">⚙</button>
+  </header>
+
+  <div id="assetBar">
+    <button class="classBtn active" data-class="forex">Forex</button>
+    <button class="classBtn" data-class="crypto">Crypto</button>
+    <button class="classBtn" data-class="stocks">Stocks</button>
+    <button class="classBtn" data-class="indices">Indices</button>
+  </div>
+
+  <div id="symbolRow">
+    <input id="symbolInput" placeholder="e.g. EUR/USD" autocomplete="off">
+    <button id="loadBtn">Load</button>
+  </div>
+
+  <div id="pairGrid"></div>
+
+  <div id="timeframeRow"></div>
+
+  <div id="tapModeRow">
+    <button class="modeBtn active" id="modeLevelBtn" data-mode="level">Tap Level</button>
+    <button class="modeBtn" id="modeSwingBtn" data-mode="swing">AB Swing</button>
+    <button id="clearSwingBtn" title="Clear all AB marks">✕ AB</button>
+  </div>
+
+  <div id="chartWrap">
+    <div id="chart"></div>
+    <div id="chartHint">Tap the chart to add a level, pinch/drag to zoom</div>
+    <div id="priceNow"></div>
+    <div id="chartEmpty">Enter a symbol and tap Load to bring up the chart.</div>
+    <div id="lineHandles"></div>
+  </div>
+
+  <div id="pendingPanel"></div>
+
+  <div id="alertsSection">
+    <h2>Active alerts</h2>
+    <div id="alertsList"><div id="alertsEmpty">No alerts yet.</div></div>
+  </div>
+
+</div>
+
+<div id="overlay">
+  <div id="settingsSheet">
+    <button id="closeSettingsBtn">✕</button>
+    <h2>Setup</h2>
+    <p class="sub">Inside Telegram you don't need this screen — the app knows who you are. The Apps Script URL comes from config.js.</p>
+
+    <div class="field">
+      <label>Apps Script Web App URL</label>
+      <input id="scriptUrl" placeholder="https://script.google.com/macros/s/…/exec">
+      <div class="help">The backend that stores your alerts, proxies Yahoo Finance data, and watches prices in the background. Deploy it from the LEVEL_WATCHER.gs file — see SETUP guide.</div>
+    </div>
+
+    <div class="field">
+      <label>Telegram bot token</label>
+      <input id="botToken" placeholder="123456:ABC-token-from-BotFather">
+      <div class="help">Only used here to look up your chat ID below. The token itself lives in the Apps Script, not this page.</div>
+    </div>
+
+    <div class="field">
+      <label>Telegram chat ID</label>
+      <div id="chatIdRow">
+        <input id="chatId" placeholder="tap Fetch after messaging your bot">
+        <button id="fetchChatIdBtn">Fetch</button>
+      </div>
+      <div id="chatIdStatus"></div>
+      <div class="help">Message your bot once on Telegram (anything, e.g. "hi"), then tap Fetch.</div>
+    </div>
+
+    <button id="saveSettingsBtn">Save settings</button>
+  </div>
+</div>
+
+<div id="editPriceOverlay">
+  <div id="editPriceSheet">
+    <button id="closeEditPriceBtn">✕</button>
+    <h2>Edit alert price</h2>
+    <div class="field">
+      <label id="editPriceLabel">New level</label>
+      <input id="editPriceInput" type="text" inputmode="decimal" pattern="[0-9]*[.,]?[0-9]*">
+    </div>
+    <button id="saveEditPriceBtn">Save</button>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="config.js"></script>
+<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+<script>
+(function(){
+  "use strict";
+
+  // ---------- storage ----------
+  const LS = {
+    get(k, d){ try{ const v = localStorage.getItem(k); return v===null?d:JSON.parse(v);}catch(e){return d;} },
+    set(k, v){ localStorage.setItem(k, JSON.stringify(v)); }
+  };
+  const settings = {
+    scriptUrl: LS.get('level_scriptUrl',''),
+    botToken: LS.get('level_botToken',''),
+    chatId: LS.get('level_chatId','')
+  };
+  // config.js (if present next to this file) seeds these once, so the
+  // Settings screen never needs to be touched on a fresh install.
+  if(window.LEVEL_CONFIG){
+    const c = window.LEVEL_CONFIG;
+    if(!settings.scriptUrl && c.scriptUrl && !c.scriptUrl.startsWith('PASTE_')) settings.scriptUrl = c.scriptUrl;
+    if(!settings.chatId && c.chatId && !c.chatId.startsWith('PASTE_')) settings.chatId = c.chatId;
+    LS.set('level_scriptUrl', settings.scriptUrl);
+    LS.set('level_chatId', settings.chatId);
+  }
+
+  // ---------- Telegram Mini App ----------
+  // Inside Telegram, who you are comes from Telegram itself (signed initData),
+  // so no chat ID or bot token is needed on this page.
+  const TG = (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData) ? window.Telegram.WebApp : null;
+  const INIT = TG ? TG.initData : '';
+  if(TG){
+    try{
+      TG.ready(); TG.expand();
+      TG.setHeaderColor('#0B0E14'); TG.setBackgroundColor('#0B0E14');
+      if(TG.disableVerticalSwipes) TG.disableVerticalSwipes();   // keeps chart drags from closing the app
+    }catch(e){}
+    const u = TG.initDataUnsafe && TG.initDataUnsafe.user;
+    if(u) settings.chatId = String(u.id);
+  }
+  function authUrl(u){ return INIT ? u + (u.indexOf('?')>-1 ? '&' : '?') + 'initData=' + encodeURIComponent(INIT) : u; }
+
+  function toast(msg){
+    const t = document.getElementById('toast');
+    t.textContent = msg; t.style.display='block';
+    clearTimeout(toast._t);
+    toast._t = setTimeout(()=>{ t.style.display='none'; }, 2600);
+  }
+
+  // ---------- settings UI ----------
+  const overlay = document.getElementById('overlay');
+  document.getElementById('gearBtn').onclick = ()=>{
+    document.getElementById('scriptUrl').value = settings.scriptUrl;
+    document.getElementById('botToken').value = settings.botToken;
+    document.getElementById('chatId').value = settings.chatId;
+    overlay.classList.add('show');
+  };
+  document.getElementById('closeSettingsBtn').onclick = ()=> overlay.classList.remove('show');
+  overlay.onclick = (e)=>{ if(e.target===overlay) overlay.classList.remove('show'); };
+
+  document.getElementById('saveSettingsBtn').onclick = ()=>{
+    settings.scriptUrl = document.getElementById('scriptUrl').value.trim();
+    settings.botToken = document.getElementById('botToken').value.trim();
+    settings.chatId = document.getElementById('chatId').value.trim();
+    LS.set('level_scriptUrl', settings.scriptUrl);
+    LS.set('level_botToken', settings.botToken);
+    LS.set('level_chatId', settings.chatId);
+    overlay.classList.remove('show');
+    toast('Settings saved');
+    loadAlerts();
+  };
+
+  document.getElementById('fetchChatIdBtn').onclick = async ()=>{
+    const token = document.getElementById('botToken').value.trim();
+    const statusEl = document.getElementById('chatIdStatus');
+    if(!token){ statusEl.textContent = 'Enter your bot token first.'; statusEl.style.color='var(--down)'; return; }
+    statusEl.textContent = 'Looking up…'; statusEl.style.color='var(--dim)';
+    try{
+      const res = await fetch(`https://api.telegram.org/bot${token}/getUpdates`);
+      const data = await res.json();
+      const updates = data.result || [];
+      const last = updates.reverse().find(u => u.message && u.message.chat);
+      if(last){
+        document.getElementById('chatId').value = last.message.chat.id;
+        statusEl.textContent = 'Found it — chat ID filled in.'; statusEl.style.color='var(--up)';
+      } else {
+        statusEl.textContent = 'No messages yet. Send your bot a message on Telegram first, then tap Fetch again.';
+        statusEl.style.color='var(--down)';
+      }
+    }catch(e){
+      statusEl.textContent = 'Could not reach Telegram. Check the token.'; statusEl.style.color='var(--down)';
+    }
+  };
+
+  // ---------- asset class / symbol ----------
+  let currentClass = LS.get('level_class','forex');
+  const placeholders = {
+    forex:'e.g. EUR/USD', crypto:'e.g. BTC/USD',
+    stocks:'e.g. AAPL', indices:'e.g. ^GSPC'
+  };
+  const defaults = { forex:'EUR/USD', crypto:'BTC/USD', stocks:'AAPL', indices:'^GSPC' };
+
+  // Instrument lists shown in the symbol field's dropdown.
+  const INSTRUMENTS = {
+    // Majors, common crosses, and a few widely-watched exotics.
+    forex: [
+      'EUR/USD','GBP/USD','USD/JPY','USD/CHF','USD/CAD','AUD/USD','NZD/USD',
+      'EUR/GBP','EUR/JPY','GBP/JPY','EUR/CHF','EUR/CAD','EUR/AUD','EUR/NZD',
+      'GBP/JPY','GBP/CHF','GBP/CAD','GBP/AUD','GBP/NZD',
+      'AUD/JPY','AUD/CAD','AUD/CHF','AUD/NZD',
+      'NZD/JPY','NZD/CAD','NZD/CHF','CAD/JPY','CHF/JPY',
+      'USD/NGN','USD/ZAR','USD/TRY','USD/MXN','USD/INR','USD/SGD','USD/HKD'
+    ],
+    // Top coins by market cap / trading interest.
+    crypto: [
+      'BTC/USD','ETH/USD','BNB/USD','SOL/USD','XRP/USD','ADA/USD','DOGE/USD',
+      'AVAX/USD','LINK/USD','LTC/USD','TON/USD','DOT/USD','MATIC/USD','SHIB/USD',
+      'TRX/USD','UNI/USD','ATOM/USD','XLM/USD','NEAR/USD','APT/USD','ARB/USD',
+      'OP/USD','FIL/USD','ICP/USD','ETC/USD','BCH/USD'
+    ],
+    // Large caps across sectors, US-listed.
+    stocks: [
+      'AAPL','MSFT','GOOGL','AMZN','META','NVDA','TSLA','NFLX','AMD','INTC',
+      'ORCL','CRM','ADBE','AVGO','QCOM','CSCO',
+      'JPM','BAC','GS','V','MA','WFC','C',
+      'KO','PEP','WMT','COST','MCD','NKE','SBUX','DIS',
+      'JNJ','PFE','UNH','LLY','ABBV',
+      'XOM','CVX',
+      'BA','CAT','GE','HON'
+    ],
+    // Major world indices — separate from single-name stocks since they track a whole market.
+    indices: [
+      '^GSPC','^DJI','^IXIC','^NDX','^RUT','^VIX',
+      '^FTSE','^GDAXI','^FCHI','^STOXX50E','^IBEX','^AEX',
+      '^N225','^HSI','000001.SS','^AXJO','^BSESN','^NSEI','^KS11',
+      '^GSPTSE','^BVSP','^MXX'
+    ]
+  };
+
+  function renderPairGrid(){
+    const grid = document.getElementById('pairGrid');
+    const current = document.getElementById('symbolInput').value.trim().toUpperCase();
+    grid.innerHTML = INSTRUMENTS[currentClass].map(s =>
+      `<button class="pairChip${s===current?' active':''}" data-sym="${s}">${s}</button>`
+    ).join('');
+    grid.querySelectorAll('.pairChip').forEach(btn=>{
+      btn.onclick = ()=>{
+        document.getElementById('symbolInput').value = btn.dataset.sym;
+        LS.set('level_symbol_'+currentClass, btn.dataset.sym);
+        grid.querySelectorAll('.pairChip').forEach(b=>b.classList.remove('active'));
+        btn.classList.add('active');
+        loadChart();
+      };
+    });
+  }
+
+  // Timeframes to view while marking a level. Matched to intervals Yahoo actually serves.
+  const TIMEFRAMES = [
+    { key:'5m',  label:'5m',  interval:'5m',  range:'5d' },
+    { key:'15m', label:'15m', interval:'15m', range:'5d' },
+    { key:'1h',  label:'1H',  interval:'60m', range:'1mo' },
+    { key:'1d',  label:'1D',  interval:'1d',  range:'1y' },
+    { key:'1wk', label:'1W',  interval:'1wk', range:'5y' }
+  ];
+  let currentTimeframe = LS.get('level_timeframe', '15m');
+
+  function renderTimeframes(){
+    const row = document.getElementById('timeframeRow');
+    row.innerHTML = TIMEFRAMES.map(tf =>
+      `<button class="tfBtn${tf.key===currentTimeframe?' active':''}" data-tf="${tf.key}">${tf.label}</button>`
+    ).join('');
+    row.querySelectorAll('.tfBtn').forEach(btn=>{
+      btn.onclick = ()=>{
+        currentTimeframe = btn.dataset.tf;
+        LS.set('level_timeframe', currentTimeframe);
+        row.querySelectorAll('.tfBtn').forEach(b=>b.classList.remove('active'));
+        btn.classList.add('active');
+        if(currentYahooSymbol) loadChart();
+      };
+    });
+  }
+  renderTimeframes();
+
+  // Convert what the user types into Yahoo Finance's symbol format.
+  function toYahooSymbol(input, cls){
+    const s = input.trim().toUpperCase();
+    if(cls === 'forex') return s.replace('/','') + '=X';   // EUR/USD -> EURUSD=X
+    if(cls === 'crypto') return s.includes('-') ? s : s.replace('/','-'); // BTC/USD -> BTC-USD
+    return s; // stocks/indices typed as Yahoo already expects (AAPL, ^GSPC)
+  }
+  function setClass(cls){
+    document.querySelectorAll('.classBtn').forEach(b=>b.classList.toggle('active', b.dataset.class===cls));
+    currentClass = cls;
+    LS.set('level_class', cls);
+    document.getElementById('symbolInput').placeholder = placeholders[cls];
+    document.getElementById('symbolInput').value = LS.get('level_symbol_'+cls, defaults[cls]);
+    renderPairGrid();
+  }
+  document.querySelectorAll('.classBtn').forEach(btn=>{
+    btn.onclick = ()=> setClass(btn.dataset.class);
+  });
+  setClass(currentClass);
+
+  // ---------- chart ----------
+  let chart, series, currentSymbol='', currentYahooSymbol='', lastPrice=null;
+  let currentBars = [];
+  let alertLines = [];
+  let pollTimer = null;
+  const chartEl = document.getElementById('chart');
+
+  function ensureChart(){
+    if(chart) return;
+    chart = LightweightCharts.createChart(chartEl, {
+      layout:{ background:{color:'transparent'}, textColor:'#7C8698' },
+      grid:{ vertLines:{color:'#1A2030'}, horzLines:{color:'#1A2030'} },
+      rightPriceScale:{ borderColor:'#232A38' },
+      timeScale:{ borderColor:'#232A38', timeVisible:true },
+      crosshair:{ mode: LightweightCharts.CrosshairMode.Normal },
+    });
+    series = chart.addCandlestickSeries({
+      upColor:'#3FBF7F', downColor:'#E5605A', borderVisible:false,
+      wickUpColor:'#3FBF7F', wickDownColor:'#E5605A'
+    });
+    window.addEventListener('resize', ()=>{
+      chart.applyOptions({ width: chartEl.clientWidth });
+      positionAllHandles();
+    });
+    // Pinch/drag zoom and pan stay fully native (we never call preventDefault here) —
+    // we just passively watch for a genuine single-finger tap to add a level, so a
+    // pinch or pan release never gets misread as "add a line here".
+    let touchStartX=0, touchStartY=0, touchStartTime=0, activePointers=new Set(), wasMultiTouch=false;
+    chartEl.addEventListener('pointerdown', (e)=>{
+      activePointers.add(e.pointerId);
+      if(activePointers.size > 1){ wasMultiTouch = true; }
+      else { touchStartX = e.clientX; touchStartY = e.clientY; touchStartTime = Date.now(); wasMultiTouch = false; }
+    }, {passive:true});
+    chartEl.addEventListener('pointerup', (e)=>{
+      activePointers.delete(e.pointerId);
+      if(activePointers.size === 0){
+        const dx = Math.abs(e.clientX - touchStartX), dy = Math.abs(e.clientY - touchStartY);
+        const dt = Date.now() - touchStartTime;
+        if(!wasMultiTouch && dx < 6 && dy < 6 && dt < 400 && series){
+          const rect = chartEl.getBoundingClientRect();
+          const x = e.clientX - rect.left, y = e.clientY - rect.top;
+          if(tapMode==='swing'){
+            handleSwingTap(x, y);
+          } else {
+            const price = series.coordinateToPrice(y);
+            if(price!==null && price!==undefined){
+              if(pendingLines.length >= 6) toast('Remove a level first — 6 at once max');
+              else addPendingLine(price);
+            }
+          }
+        }
+        wasMultiTouch = false;
+      }
+    }, {passive:true});
+    chartEl.addEventListener('pointercancel', (e)=>{ activePointers.delete(e.pointerId); wasMultiTouch=false; }, {passive:true});
+    chart.timeScale().subscribeVisibleLogicalRangeChange(positionAllHandles);
+  }
+
+  async function loadChart(){
+    const symbol = document.getElementById('symbolInput').value.trim();
+    if(!symbol){ toast('Enter a symbol'); return; }
+    if(!settings.scriptUrl){ toast('Add your Apps Script URL in Settings'); overlay.classList.add('show'); return; }
+    clearAllPendingLines();
+    swingPoints = []; swingPairs = []; clearSwingMarkers(); updateSwingHint();
+    document.getElementById('chartEmpty').textContent = 'Loading chart…';
+    document.getElementById('chartEmpty').style.display='flex';
+    const yahooSymbol = toYahooSymbol(symbol, currentClass);
+    const tf = TIMEFRAMES.find(t=>t.key===currentTimeframe) || TIMEFRAMES[1];
+    try{
+      const url = `${settings.scriptUrl}?action=chart&symbol=${encodeURIComponent(yahooSymbol)}&interval=${tf.interval}&range=${tf.range}`;
+      const res = await fetch(authUrl(url));
+      const data = await res.json();
+      if(data.error || !data.bars || !data.bars.length){
+        document.getElementById('chartEmpty').textContent = data.error || 'Could not load that symbol.';
+        document.getElementById('chartEmpty').style.display='flex';
+        return;
+      }
+      ensureChart();
+      series.setData(data.bars);
+      currentBars = data.bars;
+      chart.timeScale().fitContent();
+      chart.applyOptions({ width: chartEl.clientWidth, height: chartEl.clientHeight });
+      currentSymbol = symbol;
+      currentYahooSymbol = yahooSymbol;
+      LS.set('level_symbol_'+currentClass, symbol);
+      lastPrice = data.price || data.bars[data.bars.length-1].close;
+      document.getElementById('priceNow').textContent = fmt(lastPrice);
+      document.getElementById('chartEmpty').style.display='none';
+      renderPairGrid();
+      drawAlertLines();
+      startPolling();
+    }catch(e){
+      document.getElementById('chartEmpty').textContent = 'Network error loading chart.';
+      document.getElementById('chartEmpty').style.display='flex';
+    }
+  }
+  document.getElementById('loadBtn').onclick = loadChart;
+
+  // Redraw this symbol's active alert levels as horizontal lines on the chart.
+  function drawAlertLines(){
+    if(!series) return;
+    alertLines.forEach(l => series.removePriceLine(l));
+    alertLines = [];
+    allAlerts.filter(a => a.symbol === currentYahooSymbol && a.status === 'active').forEach(a=>{
+      alertLines.push(series.createPriceLine({
+        price: Number(a.price), color:'#E3A24B', lineWidth:1, lineStyle: LightweightCharts.LineStyle.Dashed,
+        axisLabelVisible:true, title: a.direction
+      }));
+    });
+  }
+
+  // Poll the live price every 30s while a chart is open, so priceNow stays current
+  // even between the watcher's own checks.
+  function startPolling(){
+    if(pollTimer) clearInterval(pollTimer);
+    pollTimer = setInterval(async ()=>{
+      if(!currentYahooSymbol || !settings.scriptUrl) return;
+      try{
+        const res = await fetch(authUrl(`${settings.scriptUrl}?action=price&symbol=${encodeURIComponent(currentYahooSymbol)}`));
+        const data = await res.json();
+        if(data.price){
+          lastPrice = data.price;
+          document.getElementById('priceNow').textContent = fmt(lastPrice);
+        }
+      }catch(e){ /* silent */ }
+    }, 30000);
+  }
+
+  function fmt(n){
+    if(n===null||n===undefined) return '';
+    const decimals = n < 10 ? 5 : (n < 1000 ? 4 : 2);
+    return Number(n).toFixed(Math.min(decimals, n<10?5:2));
+  }
+
+  // ---------- multi-level placement (tap to add, drag each line's own handle) ----------
+  let pendingLines = []; // { id, priceLine, handleEl, price }
+  let nextLineId = 1;
+
+  function addPendingLine(price, label){
+    const id = nextLineId++;
+    const priceLine = series.createPriceLine({
+      price, color:'#E3A24B', lineWidth:2,
+      lineStyle: LightweightCharts.LineStyle.Solid,
+      axisLabelVisible:true, title: label || 'level'
+    });
+    const handleEl = document.createElement('div');
+    handleEl.className = 'lineHandle';
+    handleEl.textContent = '↕';
+    document.getElementById('lineHandles').appendChild(handleEl);
+
+    const line = { id, priceLine, handleEl, price, label: label || 'level' };
+    pendingLines.push(line);
+    attachHandleDrag(line);
+    positionHandle(line);
+    renderPendingPanel();
+    document.getElementById('chartHint').textContent = 'Drag a handle to fine-tune, tap to add more';
+    return line;
+  }
+
+  function positionHandle(line){
+    const y = series.priceToCoordinate(line.price);
+    if(y===null || y===undefined){ line.handleEl.style.display='none'; return; }
+    line.handleEl.style.display='flex';
+    line.handleEl.style.top = y + 'px';
+  }
+  function positionAllHandles(){ pendingLines.forEach(positionHandle); }
+
+  function attachHandleDrag(line){
+    let dragging = false;
+    line.handleEl.addEventListener('pointerdown', (e)=>{
+      dragging = true;
+      try{ line.handleEl.setPointerCapture(e.pointerId); }catch(err){}
+      e.stopPropagation(); e.preventDefault();
+    });
+    line.handleEl.addEventListener('pointermove', (e)=>{
+      if(!dragging) return;
+      e.stopPropagation(); e.preventDefault();
+      const rect = chartEl.getBoundingClientRect();
+      const price = series.coordinateToPrice(e.clientY - rect.top);
+      if(price===null || price===undefined) return;
+      line.price = price;
+      line.priceLine.applyOptions({ price });
+      positionHandle(line);
+      const priceEl = document.querySelector(`.pendingRow[data-id="${line.id}"] .pendingPrice`);
+      if(priceEl) priceEl.textContent = fmt(price);
+    });
+    line.handleEl.addEventListener('pointerup', (e)=>{ dragging = false; e.stopPropagation(); });
+    line.handleEl.addEventListener('pointercancel', ()=>{ dragging = false; });
+  }
+
+  // ---------- tap mode: free level vs AB swing marking ----------
+  // POI = B + (A-B) x ratio, i.e. the A-B swing extended past A in the direction
+  // opposite the A->B move — same model as the Uedge ABC scanner.
+  const POI_RATIOS = [1.625, 2.0];
+  let tapMode = 'level'; // 'level' | 'swing'
+  let swingPoints = [];  // in-progress pick for the pair being built now: 0 or 1 points
+  let swingPairs = [];   // completed pairs: [{ A, B }], each point { price, time, type }
+
+  function setTapMode(mode){
+    tapMode = mode;
+    document.getElementById('modeLevelBtn').classList.toggle('active', mode==='level');
+    document.getElementById('modeSwingBtn').classList.toggle('active', mode==='swing');
+    updateSwingHint();
+  }
+  document.getElementById('modeLevelBtn').onclick = ()=> setTapMode('level');
+  document.getElementById('modeSwingBtn').onclick = ()=> setTapMode('swing');
+  document.getElementById('clearSwingBtn').onclick = ()=>{
+    swingPairs = []; swingPoints = [];
+    clearSwingMarkers();
+    updateSwingHint();
+  };
+
+  function updateSwingHint(){
+    const hint = document.getElementById('chartHint');
+    const clearBtn = document.getElementById('clearSwingBtn');
+    clearBtn.classList.toggle('show', swingPairs.length>0 || swingPoints.length>0);
+    if(tapMode==='level'){ hint.textContent = pendingLines.length ? 'Drag a handle to fine-tune, tap to add more' : 'Tap the chart to add a level, pinch/drag to zoom'; return; }
+    const n = swingPairs.length + 1; // which pair is currently being picked
+    if(swingPoints.length===0) hint.textContent = `🎯 Pair ${n}: tap swing point A (a recent high or low)`;
+    else hint.textContent = `🎯 Pair ${n}: now tap swing point B`;
+  }
+
+  function clearSwingMarkers(){
+    if(series) series.setMarkers([]);
+  }
+
+  // Redraws markers for every completed pair (A1/B1, A2/B2, ...) plus
+  // whatever point is currently in progress for the next pair.
+  function renderSwingMarkers(){
+    if(!series) return;
+    const markers = [];
+    swingPairs.forEach((pair,i)=>{
+      const n = i+1;
+      markers.push({ time: pair.A.time, position: pair.A.type==='high'?'aboveBar':'belowBar', color:'#E3A24B', shape:'circle', text:`A${n}` });
+      markers.push({ time: pair.B.time, position: pair.B.type==='high'?'aboveBar':'belowBar', color:'#E3A24B', shape:'circle', text:`B${n}` });
+    });
+    if(swingPoints.length===1){
+      const n = swingPairs.length+1, p = swingPoints[0];
+      markers.push({ time: p.time, position: p.type==='high'?'aboveBar':'belowBar', color:'#3FBF7F', shape:'circle', text:`A${n}` });
+    }
+    markers.sort((a,b)=> a.time - b.time);
+    series.setMarkers(markers);
+  }
+
+  // Snaps a tap to the nearest candle's actual high or low (whichever the
+  // tap landed closer to), not just the raw price under the thumb.
+  function nearestSwingPoint(x, y){
+    if(!currentBars.length || !chart || !series) return null;
+    const logical = chart.timeScale().coordinateToLogical(x);
+    if(logical===null || logical===undefined) return null;
+    const idx = Math.max(0, Math.min(currentBars.length-1, Math.round(logical)));
+    const bar = currentBars[idx];
+    const tappedPrice = series.coordinateToPrice(y);
+    if(tappedPrice===null || tappedPrice===undefined) return null;
+    const type = Math.abs(tappedPrice - bar.high) <= Math.abs(tappedPrice - bar.low) ? 'high' : 'low';
+    return { price: type==='high' ? bar.high : bar.low, time: bar.time, type };
+  }
+
+  function handleSwingTap(x, y){
+    if(pendingLines.length >= 6 && swingPoints.length===0){
+      toast('Remove a level first — 6 at once max'); return;
+    }
+    const pt = nearestSwingPoint(x, y);
+    if(!pt){ toast('Load a chart first'); return; }
+    swingPoints.push(pt);
+    renderSwingMarkers();
+    updateSwingHint();
+    if(swingPoints.length===2){
+      const [A,B] = swingPoints;
+      swingPoints = [];
+      if(A.price===B.price){ toast('A and B are the same point — tap again'); renderSwingMarkers(); updateSwingHint(); return; }
+      swingPairs.push({A,B});
+      const pairNum = swingPairs.length;
+      let added = 0;
+      POI_RATIOS.forEach(r=>{
+        if(pendingLines.length >= 6) return;
+        const poi = B.price + (A.price - B.price) * r;
+        addPendingLine(poi, `AB${pairNum} · ${r}x`);
+        added++;
+      });
+      renderSwingMarkers();
+      updateSwingHint();
+      toast(added ? `Pair ${pairNum} marked — ${POI_RATIOS.slice(0,added).join('x / ')}x added below` : 'Remove a level first — 6 at once max');
+    }
+  }
+
+  function removePendingLine(id){
+    const idx = pendingLines.findIndex(l=>l.id===id);
+    if(idx===-1) return;
+    const line = pendingLines[idx];
+    if(series) series.removePriceLine(line.priceLine);
+    line.handleEl.remove();
+    pendingLines.splice(idx,1);
+    renderPendingPanel();
+    if(!pendingLines.length) document.getElementById('chartHint').textContent = 'Tap the chart to add a level, pinch/drag to zoom';
+  }
+  function clearAllPendingLines(){
+    pendingLines.slice().forEach(l => removePendingLine(l.id));
+  }
+
+  function renderPendingPanel(){
+    const panel = document.getElementById('pendingPanel');
+    if(!pendingLines.length){ panel.classList.remove('show'); panel.innerHTML=''; return; }
+    panel.classList.add('show');
+    panel.innerHTML = pendingLines.map(l => `
+      <div class="pendingRow" data-id="${l.id}">
+        <div class="pendingPrice">${fmt(l.price)}${l.label && l.label!=='level' ? ` <span style="color:var(--dim);font-size:11px;font-weight:500;">${l.label}</span>` : ''}</div>
+        <div class="pendingBtns">
+          <button data-act="touch" data-id="${l.id}" class="primary">Touch</button>
+          <button data-act="above" data-id="${l.id}">Above</button>
+          <button data-act="below" data-id="${l.id}">Below</button>
+          <button data-act="remove" data-id="${l.id}" class="remove">✕</button>
+        </div>
+      </div>
+    `).join('');
+    panel.querySelectorAll('button').forEach(btn=>{
+      btn.onclick = ()=>{
+        const id = Number(btn.dataset.id);
+        if(btn.dataset.act === 'remove') removePendingLine(id);
+        else submitPendingLine(id, btn.dataset.act);
+      };
+    });
+  }
+
+  async function submitPendingLine(id, direction){
+    const line = pendingLines.find(l=>l.id===id);
+    if(!line) return;
+    if(!settings.scriptUrl){ toast('Add your Apps Script URL in Settings'); overlay.classList.add('show'); return; }
+    if(!settings.chatId){ toast('Add your Telegram chat ID in Settings'); overlay.classList.add('show'); return; }
+    const payload = {
+      symbol: currentYahooSymbol, label: currentSymbol, price: line.price, direction,
+      chatId: settings.chatId, initData: INIT
+    };
+    try{
+      const res = await fetch(settings.scriptUrl, {
+        method:'POST',
+        headers:{'Content-Type':'text/plain'},
+        body: JSON.stringify(payload)
+      });
+      const text = await res.text();
+      let result = null;
+      try{ result = JSON.parse(text); }catch(parseErr){
+        toast('Watcher returned an unexpected reply — check the Apps Script Execution log');
+        return;
+      }
+      if(!res.ok || !result || !result.ok){
+        toast('Watcher rejected it (HTTP ' + res.status + ') — check the URL in Settings');
+        return;
+      }
+      toast('Alert set — watching ' + currentSymbol);
+      removePendingLine(id);
+      setTimeout(loadAlerts, 800);
+    }catch(e){
+      toast('Network error reaching the watcher — check the Web App URL in Settings');
+    }
+  }
+
+  // ---------- alerts list ----------
+  let allAlerts = [];
+  function formatSetTime(iso){
+    if(!iso) return '';
+    const d = new Date(iso);
+    if(isNaN(d)) return '';
+    const diffMs = Date.now() - d.getTime();
+    const mins = Math.floor(diffMs / 60000);
+    if(mins < 1) return 'just now';
+    if(mins < 60) return mins + 'm ago';
+    const hrs = Math.floor(mins / 60);
+    if(hrs < 24) return hrs + 'h ago';
+    return d.toLocaleString(undefined, { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
+  }
+
+  async function loadAlerts(){
+    const list = document.getElementById('alertsList');
+    if(!settings.scriptUrl){ return; }
+    try{
+      const res = await fetch(authUrl(settings.scriptUrl + '?action=list'));
+      const alerts = await res.json();
+      allAlerts = alerts;
+      drawAlertLines();
+      if(!alerts.length){
+        list.innerHTML = '<div id="alertsEmpty">No alerts yet.</div>';
+        return;
+      }
+      list.innerHTML = alerts.map(a => `
+        <div class="alertRow">
+          <div>
+            <div>
+              <span class="sym">${a.label || a.symbol}</span>
+              <span class="lvl">${fmt(Number(a.price))}</span>
+              <span class="dir">${a.direction}</span>
+            </div>
+            <div class="time">Set ${formatSetTime(a.createdAt)}</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span class="status ${a.status}">${a.status}</span>
+            <button data-edit-row="${a.row}" data-edit-price="${a.price}" title="Edit price">✎</button>
+            <button data-row="${a.row}" title="Cancel">✕</button>
+          </div>
+        </div>
+      `).join('');
+      list.querySelectorAll('button[data-edit-row]').forEach(btn=>{
+        btn.onclick = ()=> editAlertPrice(btn.dataset.editRow, btn.dataset.editPrice);
+      });
+      list.querySelectorAll('button[data-row]').forEach(btn=>{
+        btn.onclick = ()=> cancelAlert(btn.dataset.row);
+      });
+    }catch(e){ /* silent */ }
+  }
+
+  let editingRow = null;
+
+  function editAlertPrice(row, currentPrice){
+    editingRow = row;
+    const input = document.getElementById('editPriceInput');
+    input.value = currentPrice;
+    document.getElementById('editPriceOverlay').classList.add('show');
+    setTimeout(()=> { input.focus(); input.select(); }, 50);
+  }
+
+  async function submitEditPrice(){
+    const input = document.getElementById('editPriceInput');
+    const newPrice = parseFloat(input.value.replace(',', '.'));
+    if(isNaN(newPrice) || newPrice <= 0){
+      toast('Enter a valid price');
+      return;
+    }
+    try{
+      const res = await fetch(settings.scriptUrl, {
+        method:'POST', headers:{'Content-Type':'text/plain'},
+        body: JSON.stringify({ action:'update', row: editingRow, price:newPrice, initData: INIT })
+      });
+      if(!res.ok){ toast('Could not update — try again'); return; }
+      document.getElementById('editPriceOverlay').classList.remove('show');
+      loadAlerts();
+    }catch(e){ toast('Could not update — try again'); }
+  }
+
+  document.getElementById('closeEditPriceBtn').onclick = ()=>
+    document.getElementById('editPriceOverlay').classList.remove('show');
+  document.getElementById('editPriceOverlay').onclick = (e)=>{
+    if(e.target === document.getElementById('editPriceOverlay'))
+      document.getElementById('editPriceOverlay').classList.remove('show');
+  };
+  document.getElementById('saveEditPriceBtn').onclick = submitEditPrice;
+  document.getElementById('editPriceInput').addEventListener('keydown', (e)=>{
+    if(e.key === 'Enter') submitEditPrice();
+  });
+
+  async function cancelAlert(row){
+    try{
+      await fetch(settings.scriptUrl, {
+        method:'POST', headers:{'Content-Type':'text/plain'},
+        body: JSON.stringify({ action:'cancel', row, initData: INIT })
+      });
+      loadAlerts();
+    }catch(e){ toast('Could not cancel — try again'); }
+  }
+
+  // ---------- init ----------
+  loadAlerts();
+  if(!settings.scriptUrl){
+    setTimeout(()=>{ toast('Open ⚙ Settings to finish setup'); }, 500);
+  }
+})();
+</script>
+</body>
+</html>
