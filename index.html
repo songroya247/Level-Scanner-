@@ -506,6 +506,21 @@
     chart.timeScale().subscribeVisibleLogicalRangeChange(positionAllHandles);
   }
 
+  // GET that returns parsed JSON, retries once, and explains what went wrong.
+  async function getJson(url, tries){
+    let lastErr;
+    for(let i=0;i<(tries||2);i++){
+      try{
+        const res = await fetch(url);
+        const text = await res.text();
+        try{ return JSON.parse(text); }
+        catch(pe){ lastErr = new Error('non-JSON reply (HTTP '+res.status+'): '+text.replace(/\s+/g,' ').slice(0,90)); }
+      }catch(e){ lastErr = e; }
+      await new Promise(r=>setTimeout(r,1200));
+    }
+    throw lastErr;
+  }
+
   async function loadChart(){
     const symbol = document.getElementById('symbolInput').value.trim();
     if(!symbol){ toast('Enter a symbol'); return; }
@@ -518,8 +533,7 @@
     const tf = TIMEFRAMES.find(t=>t.key===currentTimeframe) || TIMEFRAMES[1];
     try{
       const url = `${settings.scriptUrl}?action=chart&symbol=${encodeURIComponent(yahooSymbol)}&interval=${tf.interval}&range=${tf.range}`;
-      const res = await fetch(authUrl(url));
-      const data = await res.json();
+      const data = await getJson(authUrl(url), 2);
       if(data.error || !data.bars || !data.bars.length){
         document.getElementById('chartEmpty').textContent = data.error || 'Could not load that symbol.';
         document.getElementById('chartEmpty').style.display='flex';
@@ -540,7 +554,7 @@
       drawAlertLines();
       startPolling();
     }catch(e){
-      document.getElementById('chartEmpty').textContent = 'Network error loading chart.';
+      document.getElementById('chartEmpty').textContent = 'Could not load chart: ' + ((e && e.message) ? e.message : 'network error') + ' — tap Load to retry.';
       document.getElementById('chartEmpty').style.display='flex';
     }
   }
@@ -794,7 +808,7 @@
         return;
       }
       if(!res.ok || !result || !result.ok){
-        toast('Watcher rejected it (HTTP ' + res.status + ') — check the URL in Settings');
+        toast(result && result.error ? 'Watcher says: ' + result.error : 'Watcher rejected it (HTTP ' + res.status + ') — check the URL in Settings');
         return;
       }
       toast('Alert set — watching ' + currentSymbol);
