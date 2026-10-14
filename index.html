@@ -155,7 +155,7 @@
 <div id="app">
 
   <header>
-    <h1>Level<span>.</span></h1>
+    <h1>Level<span>.</span> <small style="font-size:10px;font-weight:400;color:#566070;letter-spacing:0">build 5</small></h1>
     <button id="gearBtn" title="Settings">⚙</button>
   </header>
 
@@ -526,7 +526,7 @@
     if(!symbol){ toast('Enter a symbol'); return; }
     if(!settings.scriptUrl){ toast('Add your Apps Script URL in Settings'); overlay.classList.add('show'); return; }
     clearAllPendingLines();
-    swingPoints = []; swingPairs = []; clearSwingMarkers(); updateSwingHint();
+    swingPoints = []; swingPairs = []; adjusting = null; clearSwingMarkers(); updateSwingHint();
     document.getElementById('chartEmpty').textContent = 'Loading chart…';
     document.getElementById('chartEmpty').style.display='flex';
     const yahooSymbol = toYahooSymbol(symbol, currentClass);
@@ -600,7 +600,7 @@
   let pendingLines = []; // { id, priceLine, handleEl, price }
   let nextLineId = 1;
 
-  function addPendingLine(price, label){
+  function addPendingLine(price, label, meta){
     const id = nextLineId++;
     const priceLine = series.createPriceLine({
       price, color:'#E3A24B', lineWidth:2,
@@ -612,7 +612,7 @@
     handleEl.textContent = '↕';
     document.getElementById('lineHandles').appendChild(handleEl);
 
-    const line = { id, priceLine, handleEl, price, label: label || 'level' };
+    const line = { id, priceLine, handleEl, price, label: label || 'level', pair: meta && meta.pair, ratio: meta && meta.ratio };
     pendingLines.push(line);
     attachHandleDrag(line);
     positionHandle(line);
@@ -659,9 +659,11 @@
   let tapMode = 'level'; // 'level' | 'swing'
   let swingPoints = [];  // in-progress pick for the pair being built now: 0 or 1 points
   let swingPairs = [];   // completed pairs: [{ A, B }], each point { price, time, type }
+  let adjusting = null;  // point being moved: { pair: index, which: 'A' | 'B' }
 
   function setTapMode(mode){
     tapMode = mode;
+    adjusting = null;
     document.getElementById('modeLevelBtn').classList.toggle('active', mode==='level');
     document.getElementById('modeSwingBtn').classList.toggle('active', mode==='swing');
     updateSwingHint();
@@ -669,7 +671,7 @@
   document.getElementById('modeLevelBtn').onclick = ()=> setTapMode('level');
   document.getElementById('modeSwingBtn').onclick = ()=> setTapMode('swing');
   document.getElementById('clearSwingBtn').onclick = ()=>{
-    swingPairs = []; swingPoints = [];
+    swingPairs = []; swingPoints = []; adjusting = null;
     clearSwingMarkers();
     updateSwingHint();
   };
@@ -679,8 +681,9 @@
     const clearBtn = document.getElementById('clearSwingBtn');
     clearBtn.classList.toggle('show', swingPairs.length>0 || swingPoints.length>0);
     if(tapMode==='level'){ hint.textContent = pendingLines.length ? 'Drag a handle to fine-tune, tap to add more' : 'Tap the chart to add a level, pinch/drag to zoom'; return; }
+    if(adjusting){ hint.textContent = `✏️ Tap the new spot for ${adjusting.which}${adjusting.pair+1} (tap it again to cancel)`; return; }
     const n = swingPairs.length + 1; // which pair is currently being picked
-    if(swingPoints.length===0) hint.textContent = `🎯 Pair ${n}: tap swing point A (a recent high or low)`;
+    if(swingPoints.length===0) hint.textContent = `🎯 Pair ${n}: tap swing point A (a recent high or low)` + (swingPairs.length ? ' — or tap an A/B marker to move it' : '');
     else hint.textContent = `🎯 Pair ${n}: now tap swing point B`;
   }
 
@@ -695,8 +698,10 @@
     const markers = [];
     swingPairs.forEach((pair,i)=>{
       const n = i+1;
-      markers.push({ time: pair.A.time, position: pair.A.type==='high'?'aboveBar':'belowBar', color:'#E3A24B', shape:'circle', text:`A${n}` });
-      markers.push({ time: pair.B.time, position: pair.B.type==='high'?'aboveBar':'belowBar', color:'#E3A24B', shape:'circle', text:`B${n}` });
+      const selA = adjusting && adjusting.pair===i && adjusting.which==='A';
+      const selB = adjusting && adjusting.pair===i && adjusting.which==='B';
+      markers.push({ time: pair.A.time, position: pair.A.type==='high'?'aboveBar':'belowBar', color: selA ? '#3FBF7F' : '#E3A24B', shape:'circle', text: selA ? `A${n} ✏️` : `A${n}` });
+      markers.push({ time: pair.B.time, position: pair.B.type==='high'?'aboveBar':'belowBar', color: selB ? '#3FBF7F' : '#E3A24B', shape:'circle', text: selB ? `B${n} ✏️` : `B${n}` });
     });
     if(swingPoints.length===1){
       const n = swingPairs.length+1, p = swingPoints[0];
@@ -720,7 +725,70 @@
     return { price: type==='high' ? bar.high : bar.low, time: bar.time, type };
   }
 
+  // Which placed A/B marker (if any) is under the thumb?
+  function hitMarker(x, y){
+    if(!chart || !series) return null;
+    let best = null, bestD = 34;
+    swingPairs.forEach((pair, i)=>{
+      ['A','B'].forEach(which=>{
+        const p = pair[which];
+        const px = chart.timeScale().timeToCoordinate(p.time);
+        const py = series.priceToCoordinate(p.price);
+        if(px===null || px===undefined || py===null || py===undefined) return;
+        const d = Math.hypot(px - x, py - y);
+        if(d < bestD){ bestD = d; best = { pair: i, which }; }
+      });
+    });
+    return best;
+  }
+
+  // Moves A or B of a finished pair and re-computes its levels.
+  function moveSwingPoint(x, y){
+    const hit = hitMarker(x, y);
+    if(hit && hit.pair===adjusting.pair && hit.which===adjusting.which){
+      adjusting = null; renderSwingMarkers(); updateSwingHint(); toast('Move cancelled'); return;
+    }
+    const pt = nearestSwingPoint(x, y);
+    if(!pt){ toast('Load a chart first'); return; }
+    const pair = swingPairs[adjusting.pair];
+    const other = adjusting.which==='A' ? pair.B : pair.A;
+    if(other.price===pt.price){ toast('A and B would be the same point — tap a different spot'); return; }
+    pair[adjusting.which] = pt;
+    const pairNum = adjusting.pair + 1, label = adjusting.which + pairNum;
+    adjusting = null;
+    let updated = 0, added = 0;
+    POI_RATIOS.forEach(r=>{
+      const poi = pair.B.price + (pair.A.price - pair.B.price) * r;
+      const line = pendingLines.find(l => l.pair===pairNum && l.ratio===r);
+      if(line){
+        line.price = poi;
+        line.priceLine.applyOptions({ price: poi });
+        positionHandle(line);
+        updated++;
+      } else if(pendingLines.length < 6){
+        addPendingLine(poi, `AB${pairNum} · ${r}x`, { pair: pairNum, ratio: r });
+        added++;
+      }
+    });
+    renderPendingPanel();
+    renderSwingMarkers();
+    updateSwingHint();
+    toast(`${label} moved — ${updated + added} level${updated + added===1?'':'s'} updated`);
+  }
+
   function handleSwingTap(x, y){
+    // 1) a point is selected for moving → this tap is its new position
+    if(adjusting){ moveSwingPoint(x, y); return; }
+    // 2) tapping a placed A/B marker selects it for moving (only between pairs)
+    if(swingPoints.length===0){
+      const hit = hitMarker(x, y);
+      if(hit){
+        adjusting = hit;
+        renderSwingMarkers(); updateSwingHint();
+        toast(`Tap the new spot for ${hit.which}${hit.pair+1}`);
+        return;
+      }
+    }
     if(pendingLines.length >= 6 && swingPoints.length===0){
       toast('Remove a level first — 6 at once max'); return;
     }
@@ -739,7 +807,7 @@
       POI_RATIOS.forEach(r=>{
         if(pendingLines.length >= 6) return;
         const poi = B.price + (A.price - B.price) * r;
-        addPendingLine(poi, `AB${pairNum} · ${r}x`);
+        addPendingLine(poi, `AB${pairNum} · ${r}x`, { pair: pairNum, ratio: r });
         added++;
       });
       renderSwingMarkers();
