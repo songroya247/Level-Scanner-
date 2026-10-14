@@ -35,6 +35,15 @@
   #clearSwingBtn{flex-shrink:0;display:none;padding:8px 10px;border-radius:9px;border:1px solid var(--line);
     background:var(--panel);color:var(--dim);font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;}
   #clearSwingBtn.show{display:block;}
+  #swingTools{display:none;margin:0 0 8px;}
+  #swingTools.show{display:block;}
+  .toolRow{display:flex;align-items:center;gap:6px;margin-bottom:6px;}
+  .toolLbl{font-size:11.5px;color:var(--dim);font-weight:600;min-width:50px;}
+  .toolBtn{flex:1;padding:10px 0;border-radius:8px;border:1px solid var(--line);background:var(--panel);
+    color:var(--text);font-size:14px;font-weight:700;cursor:pointer;}
+  .toolBtn.active{background:var(--panel-2);color:var(--amber);border-color:var(--amber);}
+  #nudgeRow{display:none;}
+  #nudgeRow.show{display:flex;}
 
   #assetBar{display:flex;gap:6px;padding:0 16px 12px;flex-shrink:0;}
   .classBtn{flex:1;padding:9px 0;border-radius:9px;border:1px solid var(--line);
@@ -155,7 +164,7 @@
 <div id="app">
 
   <header>
-    <h1>Level<span>.</span> <small style="font-size:10px;font-weight:400;color:#566070;letter-spacing:0">build 5</small></h1>
+    <h1>Level<span>.</span> <small style="font-size:10px;font-weight:400;color:#566070;letter-spacing:0">build 6</small></h1>
     <button id="gearBtn" title="Settings">⚙</button>
   </header>
 
@@ -179,6 +188,23 @@
     <button class="modeBtn active" id="modeLevelBtn" data-mode="level">Tap Level</button>
     <button class="modeBtn" id="modeSwingBtn" data-mode="swing">AB Swing</button>
     <button id="clearSwingBtn" title="Clear all AB marks">✕ AB</button>
+  </div>
+
+  <div id="swingTools">
+    <div class="toolRow"><span class="toolLbl">Snap to</span>
+      <button class="toolBtn active" data-snap="auto">Auto</button>
+      <button class="toolBtn" data-snap="high">High</button>
+      <button class="toolBtn" data-snap="low">Low</button>
+    </div>
+    <div class="toolRow" id="nudgeRow"><span class="toolLbl" id="nudgeLbl">A1</span>
+      <button class="toolBtn" data-n="-5" title="5 candles left">«</button>
+      <button class="toolBtn" data-n="-1" title="1 candle left">‹</button>
+      <button class="toolBtn" data-n="1" title="1 candle right">›</button>
+      <button class="toolBtn" data-n="5" title="5 candles right">»</button>
+      <button class="toolBtn" data-flip="high" title="Use this candle's high">▲H</button>
+      <button class="toolBtn" data-flip="low" title="Use this candle's low">▼L</button>
+      <button class="toolBtn" id="nudgeDone" title="Done">✓</button>
+    </div>
   </div>
 
   <div id="chartWrap">
@@ -526,7 +552,7 @@
     if(!symbol){ toast('Enter a symbol'); return; }
     if(!settings.scriptUrl){ toast('Add your Apps Script URL in Settings'); overlay.classList.add('show'); return; }
     clearAllPendingLines();
-    swingPoints = []; swingPairs = []; adjusting = null; clearSwingMarkers(); updateSwingHint();
+    swingPoints = []; swingPairs = []; adjusting = null; sel = null; clearSwingMarkers(); updateSwingHint();
     document.getElementById('chartEmpty').textContent = 'Loading chart…';
     document.getElementById('chartEmpty').style.display='flex';
     const yahooSymbol = toYahooSymbol(symbol, currentClass);
@@ -659,11 +685,13 @@
   let tapMode = 'level'; // 'level' | 'swing'
   let swingPoints = [];  // in-progress pick for the pair being built now: 0 or 1 points
   let swingPairs = [];   // completed pairs: [{ A, B }], each point { price, time, type }
-  let adjusting = null;  // point being moved: { pair: index, which: 'A' | 'B' }
+  let adjusting = null;  // point waiting for a chart tap to relocate it: { pair: index, which: 'A' | 'B' }
+  let sel = null;        // point the nudge bar controls: { kind:'pending' } | { kind:'pair', pair, which }
+  let snapMode = 'auto'; // 'auto' | 'high' | 'low'
 
   function setTapMode(mode){
     tapMode = mode;
-    adjusting = null;
+    adjusting = null; sel = null;
     document.getElementById('modeLevelBtn').classList.toggle('active', mode==='level');
     document.getElementById('modeSwingBtn').classList.toggle('active', mode==='swing');
     updateSwingHint();
@@ -671,12 +699,13 @@
   document.getElementById('modeLevelBtn').onclick = ()=> setTapMode('level');
   document.getElementById('modeSwingBtn').onclick = ()=> setTapMode('swing');
   document.getElementById('clearSwingBtn').onclick = ()=>{
-    swingPairs = []; swingPoints = []; adjusting = null;
+    swingPairs = []; swingPoints = []; adjusting = null; sel = null;
     clearSwingMarkers();
     updateSwingHint();
   };
 
   function updateSwingHint(){
+    updateSwingTools();
     const hint = document.getElementById('chartHint');
     const clearBtn = document.getElementById('clearSwingBtn');
     clearBtn.classList.toggle('show', swingPairs.length>0 || swingPoints.length>0);
@@ -698,8 +727,8 @@
     const markers = [];
     swingPairs.forEach((pair,i)=>{
       const n = i+1;
-      const selA = adjusting && adjusting.pair===i && adjusting.which==='A';
-      const selB = adjusting && adjusting.pair===i && adjusting.which==='B';
+      const selA = sel && sel.kind==='pair' && sel.pair===i && sel.which==='A';
+      const selB = sel && sel.kind==='pair' && sel.pair===i && sel.which==='B';
       markers.push({ time: pair.A.time, position: pair.A.type==='high'?'aboveBar':'belowBar', color: selA ? '#3FBF7F' : '#E3A24B', shape:'circle', text: selA ? `A${n} ✏️` : `A${n}` });
       markers.push({ time: pair.B.time, position: pair.B.type==='high'?'aboveBar':'belowBar', color: selB ? '#3FBF7F' : '#E3A24B', shape:'circle', text: selB ? `B${n} ✏️` : `B${n}` });
     });
@@ -721,9 +750,92 @@
     const bar = currentBars[idx];
     const tappedPrice = series.coordinateToPrice(y);
     if(tappedPrice===null || tappedPrice===undefined) return null;
-    const type = Math.abs(tappedPrice - bar.high) <= Math.abs(tappedPrice - bar.low) ? 'high' : 'low';
+    const autoType = Math.abs(tappedPrice - bar.high) <= Math.abs(tappedPrice - bar.low) ? 'high' : 'low';
+    const type = snapMode === 'auto' ? autoType : snapMode;
     return { price: type==='high' ? bar.high : bar.low, time: bar.time, type };
   }
+
+  // Re-computes the 1.625x / 2x levels of a pair; updates open lines or adds missing ones.
+  function refreshPairLevels(pairIdx){
+    const pair = swingPairs[pairIdx], pairNum = pairIdx + 1;
+    let n = 0;
+    POI_RATIOS.forEach(r=>{
+      const poi = pair.B.price + (pair.A.price - pair.B.price) * r;
+      const line = pendingLines.find(l => l.pair===pairNum && l.ratio===r);
+      if(line){
+        line.price = poi;
+        line.priceLine.applyOptions({ price: poi });
+        positionHandle(line);
+        n++;
+      } else if(pendingLines.length < 6){
+        addPendingLine(poi, `AB${pairNum} · ${r}x`, { pair: pairNum, ratio: r });
+        n++;
+      }
+    });
+    renderPendingPanel();
+    return n;
+  }
+
+  function barIndexOf(time){
+    let lo = 0, hi = currentBars.length - 1;
+    while(lo <= hi){
+      const m = (lo + hi) >> 1, t = currentBars[m].time;
+      if(t === time) return m;
+      if(t < time) lo = m + 1; else hi = m - 1;
+    }
+    return -1;
+  }
+  function getSelPoint(){
+    if(!sel) return null;
+    if(sel.kind === 'pending') return swingPoints[0] || null;
+    const pr = swingPairs[sel.pair];
+    return pr ? pr[sel.which] : null;
+  }
+  function setSelPoint(np){
+    if(sel.kind === 'pending'){ swingPoints[0] = np; renderSwingMarkers(); updateSwingHint(); return true; }
+    const pr = swingPairs[sel.pair];
+    const other = sel.which === 'A' ? pr.B : pr.A;
+    if(other.price === np.price){ toast('A and B would be at the same price'); return false; }
+    pr[sel.which] = np;
+    refreshPairLevels(sel.pair);
+    renderSwingMarkers(); updateSwingHint();
+    return true;
+  }
+  // Move the selected point by whole candles, keeping its high/low side.
+  function nudgeSel(step){
+    const p = getSelPoint(); if(!p) return;
+    const i = barIndexOf(p.time); if(i < 0) return;
+    const j = Math.max(0, Math.min(currentBars.length - 1, i + step));
+    if(j === i){ toast('That is the edge of the chart'); return; }
+    const b = currentBars[j];
+    setSelPoint({ price: p.type==='high' ? b.high : b.low, time: b.time, type: p.type });
+  }
+  // Switch the selected point to the high or the low of its own candle.
+  function flipSel(type){
+    const p = getSelPoint(); if(!p || p.type === type) return;
+    const i = barIndexOf(p.time); if(i < 0) return;
+    const b = currentBars[i];
+    setSelPoint({ price: type==='high' ? b.high : b.low, time: b.time, type });
+  }
+  function updateSwingTools(){
+    const tools = document.getElementById('swingTools');
+    tools.classList.toggle('show', tapMode === 'swing');
+    tools.querySelectorAll('[data-snap]').forEach(b => b.classList.toggle('active', b.dataset.snap === snapMode));
+    const row = document.getElementById('nudgeRow');
+    const p = getSelPoint();
+    row.classList.toggle('show', tapMode === 'swing' && !!p);
+    if(p){
+      document.getElementById('nudgeLbl').textContent = sel.kind==='pending' ? `A${swingPairs.length+1}` : `${sel.which}${sel.pair+1}`;
+      row.querySelectorAll('[data-flip]').forEach(b => b.classList.toggle('active', b.dataset.flip === p.type));
+    }
+  }
+  document.getElementById('swingTools').addEventListener('click', (e)=>{
+    const b = e.target.closest('button'); if(!b) return;
+    if(b.dataset.snap){ snapMode = b.dataset.snap; updateSwingTools(); return; }
+    if(b.dataset.n){ nudgeSel(Number(b.dataset.n)); return; }
+    if(b.dataset.flip){ flipSel(b.dataset.flip); return; }
+    if(b.id === 'nudgeDone'){ sel = null; adjusting = null; renderSwingMarkers(); updateSwingHint(); }
+  });
 
   // Which placed A/B marker (if any) is under the thumb?
   function hitMarker(x, y){
@@ -754,26 +866,13 @@
     const other = adjusting.which==='A' ? pair.B : pair.A;
     if(other.price===pt.price){ toast('A and B would be the same point — tap a different spot'); return; }
     pair[adjusting.which] = pt;
-    const pairNum = adjusting.pair + 1, label = adjusting.which + pairNum;
+    const label = adjusting.which + (adjusting.pair + 1);
+    const pairIdx = adjusting.pair;
     adjusting = null;
-    let updated = 0, added = 0;
-    POI_RATIOS.forEach(r=>{
-      const poi = pair.B.price + (pair.A.price - pair.B.price) * r;
-      const line = pendingLines.find(l => l.pair===pairNum && l.ratio===r);
-      if(line){
-        line.price = poi;
-        line.priceLine.applyOptions({ price: poi });
-        positionHandle(line);
-        updated++;
-      } else if(pendingLines.length < 6){
-        addPendingLine(poi, `AB${pairNum} · ${r}x`, { pair: pairNum, ratio: r });
-        added++;
-      }
-    });
-    renderPendingPanel();
+    const n = refreshPairLevels(pairIdx);
     renderSwingMarkers();
     updateSwingHint();
-    toast(`${label} moved — ${updated + added} level${updated + added===1?'':'s'} updated`);
+    toast(`${label} moved — ${n} level${n===1?'':'s'} updated`);
   }
 
   function handleSwingTap(x, y){
@@ -783,7 +882,7 @@
     if(swingPoints.length===0){
       const hit = hitMarker(x, y);
       if(hit){
-        adjusting = hit;
+        adjusting = hit; sel = { kind:'pair', pair: hit.pair, which: hit.which };
         renderSwingMarkers(); updateSwingHint();
         toast(`Tap the new spot for ${hit.which}${hit.pair+1}`);
         return;
@@ -795,13 +894,15 @@
     const pt = nearestSwingPoint(x, y);
     if(!pt){ toast('Load a chart first'); return; }
     swingPoints.push(pt);
+    if(swingPoints.length===1) sel = { kind:'pending' };
     renderSwingMarkers();
     updateSwingHint();
     if(swingPoints.length===2){
       const [A,B] = swingPoints;
       swingPoints = [];
-      if(A.price===B.price){ toast('A and B are the same point — tap again'); renderSwingMarkers(); updateSwingHint(); return; }
+      if(A.price===B.price){ sel = null; toast('A and B are the same point — tap again'); renderSwingMarkers(); updateSwingHint(); return; }
       swingPairs.push({A,B});
+      sel = { kind:'pair', pair: swingPairs.length-1, which:'B' };
       const pairNum = swingPairs.length;
       let added = 0;
       POI_RATIOS.forEach(r=>{
