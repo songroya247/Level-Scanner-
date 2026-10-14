@@ -565,7 +565,7 @@
     if(!series) return;
     alertLines.forEach(l => series.removePriceLine(l));
     alertLines = [];
-    allAlerts.filter(a => a.symbol === currentYahooSymbol && a.status === 'active').forEach(a=>{
+    (Array.isArray(allAlerts) ? allAlerts : []).filter(a => a.symbol === currentYahooSymbol && a.status === 'active').forEach(a=>{
       alertLines.push(series.createPriceLine({
         price: Number(a.price), color:'#E3A24B', lineWidth:1, lineStyle: LightweightCharts.LineStyle.Dashed,
         axisLabelVisible:true, title: a.direction
@@ -839,7 +839,15 @@
     if(!settings.scriptUrl){ return; }
     try{
       const res = await fetch(authUrl(settings.scriptUrl + '?action=list'));
-      const alerts = await res.json();
+      const data = await res.json();
+      if(!Array.isArray(data)){
+        // The backend answered with an error instead of a list — show why, and keep the chart working.
+        allAlerts = [];
+        drawAlertLines();
+        list.innerHTML = '<div id="alertsEmpty">Could not load alerts: ' + String((data && data.error) || 'unexpected reply from the watcher').replace(/</g,'&lt;') + '</div>';
+        return;
+      }
+      const alerts = data;
       allAlerts = alerts;
       drawAlertLines();
       if(!alerts.length){
